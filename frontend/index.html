@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Фитнес-трекер - Куриленко Павел 223-322</title>
+  <style>
+    :root {
+      html{font-size:125%}
+      --bg: #EEF3F5;
+      --panel: #fff;
+      --ink: #16303B;
+      --muted: #5D7480;
+      --accent: #0E7C86;
+      --hot: #D9480F;
+      --line: #D3DEE3
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 1rem/1.5 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px 64px
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin: 0 0 4px
+    }
+
+    .lead {
+      color: var(--muted);
+      margin: 0 0 28px
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px
+    }
+
+    h2 {
+      font-size: 1.15rem;
+      margin: 0 0 14px
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 14px;
+      align-items: end
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: .9rem;
+      color: var(--muted)
+    }
+
+    input,
+    select {
+      font: inherit;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--ink);
+      background: #fff
+    }
+
+    button {
+      font: inherit;
+      cursor: pointer;
+      border-radius: 6px;
+      padding: 10px 16px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff
+    }
+
+    button.ghost {
+      background: #fff;
+      color: var(--accent)
+    }
+
+    button.small {
+      padding: 3px 10px;
+      font-size: .85rem
+    }
+
+    :focus-visible {
+      outline: 3px solid #7FD1D8;
+      outline-offset: 2px
+    }
+
+    .result {
+      margin-top: 16px;
+      display: none;
+      align-items: baseline;
+      gap: 10px;
+      border-left: 4px solid var(--hot);
+      padding-left: 14px
+    }
+
+    .result.show {
+      display: flex
+    }
+
+    .result b {
+      font-size: 2.8rem;
+      line-height: 1;
+      color: var(--hot)
+    }
+
+    .msg {
+      margin: 12px 0 0;
+      min-height: 1.4em;
+      color: var(--muted)
+    }
+
+    .msg.err {
+      color: #B42318
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 8px
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 9px 8px;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap
+    }
+
+    th {
+      font-weight: 600;
+      color: var(--muted);
+      font-size: .9rem
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1>Фитнес-трекер</h1>
+    <p class="lead">Рассчитайте, сколько калорий вы сожгли, и сохраните тренировку в дневнике.</p>
+
+    <section>
+      <h2>Новая тренировка</h2>
+      <form id="form">
+        <label>Вид активности <select id="activity" required></select></label>
+        <label>Вес, кг <input id="weight" type="number" min="20" max="300" step="0.1" value="70" required></label>
+        <label>Длительность, мин <input id="minutes" type="number" min="1" max="600" value="30" required></label>
+        <button type="submit" id="calc">Рассчитать и сохранить</button>
+      </form>
+      <div class="result" id="result"><b id="kcal">0</b><span>ккал сожжено</span></div>
+      <p class="msg" id="msg1" role="status"></p>
+    </section>
+
+    <section>
+      <h2>Дневник тренировок</h2>
+      <button type="button" id="load" class="ghost">Показать дневник</button>
+      <p class="msg" id="msg2" role="status"></p>
+      <div class="table-wrap">
+        <table id="table" hidden>
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Активность</th>
+              <th>Время</th>
+              <th>Вес</th>
+              <th>Калории</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const $ = id => document.getElementById(id);
+
+    async function api(path, opts) {
+      const r = await fetch('/api' + path, opts);
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Ошибка сервера (' + r.status + ')');
+      return data;
+    }
+
+    function say(el, text, isError) {
+      el.textContent = text;
+      el.className = 'msg' + (isError ? ' err' : '');
+    }
+
+    async function loadActivities() {
+      try {
+        const list = await api('/activities');
+        $('activity').replaceChildren(...list.map(a => new Option(a.name, a.id)));
+      } catch (e) {
+        say($('msg1'), 'Не удалось загрузить виды активности: ' + e.message, true);
+      }
+    }
+
+    function renderRows(rows) {
+      $('table').hidden = rows.length === 0;
+      $('rows').replaceChildren(...rows.map(w => {
+        const tr = document.createElement('tr');
+        [w.created_at, w.activity, w.duration_min + ' мин', w.weight_kg + ' кг', w.calories + ' ккал']
+          .forEach(text => { const td = document.createElement('td'); td.textContent = text; tr.appendChild(td); });
+        const td = document.createElement('td');
+        const del = document.createElement('button');
+        del.textContent = 'Удалить';
+        del.className = 'ghost small';
+        del.onclick = async () => {
+          try { await api('/workouts/' + w.id, { method: 'DELETE' }); loadDiary(); }
+          catch (e) { say($('msg2'), e.message, true); }
+        };
+        td.appendChild(del);
+        tr.appendChild(td);
+        return tr;
+      }));
+    }
+
+    async function loadDiary() {
+      say($('msg2'), 'Загрузка…');
+      try {
+        const rows = await api('/workouts');
+        renderRows(rows);
+        say($('msg2'), rows.length ? 'Записей: ' + rows.length : 'Дневник пуст. Добавьте первую тренировку выше.');
+      } catch (e) {
+        say($('msg2'), e.message, true);
+      }
+    }
+
+    $('load').addEventListener('click', loadDiary);
+
+    $('form').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      say($('msg1'), 'Считаем…');
+      try {
+        const w = await api('/workouts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            activity: $('activity').value,
+            weight_kg: Number($('weight').value),
+            duration_min: Number($('minutes').value)
+          })
+        });
+        $('kcal').textContent = w.calories;
+        $('result').classList.add('show');
+        say($('msg1'), 'Тренировка «' + w.activity + '» сохранена. Нажмите «Показать дневник», чтобы увидеть запись.');
+      } catch (e) {
+        say($('msg1'), e.message, true);
+      }
+    });
+
+    loadActivities();
+  </script>
+</body>
+
+</html>
